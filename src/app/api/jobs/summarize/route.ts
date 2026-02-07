@@ -1,0 +1,165 @@
+import { NextResponse } from "next/server";
+import OpenAI from "openai";
+import { supabaseAdmin } from "@/lib/supabase";
+
+export const runtime = "nodejs";
+
+const cronSecret = process.env.CRON_SECRET;
+const openaiApiKey = process.env.OPENAI_API_KEY;
+
+const openai = openaiApiKey ? new OpenAI({ apiKey: openaiApiKey }) : null;
+
+async function handleSummarize(request: Request) {
+  if (cronSecret) {
+    const incoming = request.headers.get("x-cron-secret");
+    const vercelCron = request.headers.get("x-vercel-cron");
+    const url = new URL(request.url);
+    const querySecret = url.searchParams.get("secret");
+    if (
+      incoming !== cronSecret &&
+      querySecret !== cronSecret &&
+      vercelCron !== "1"
+    ) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+  }
+
+  if (!openai) {
+    return NextResponse.json(
+      { error: "OPENAI_API_KEY not configured" },
+      { status: 500 }
+    );
+  }
+
+  const body = (await request.json().catch(() => null)) as
+    | { roomId?: string; matchLabel?: string }
+    | null;
+
+  const roomId = body?.roomId ?? "default";
+  const matchLabel = body?.matchLabel ?? "TBD: 次の注目試合";
+
+  const { data: votes, error } = await supabaseAdmin
+    .from("votes")
+    .select("stance, comment")
+    .eq("room_id", roomId)
+    .order("created_at", { ascending: false })
+    .limit(200);
+
+  if (error) {
+    return NextResponse.json(
+      { error: "Failed to load votes" },
+      { status: 500 }
+    );
+  }
+
+  if (!votes || votes.length === 0) {
+    return NextResponse.json({
+      ok: true,
+      roomId,
+      note: "No votes to summarize",
+    });
+  }
+
+  const response = await openai.responses.create({
+    model: "gpt-4o-mini",
+    input: [
+      {
+        role: "system",
+        content:
+          "You summarize soccer match opinions into topic clusters. Return concise Japanese summaries.",
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: `Votes: ${JSON.stringify(votes)}\n\nCreate up to 5 topics. For each topic, group relevant votes and count support/oppose/neutral. Provide 2-3 short sentences for each stance (support/oppose/neutral). Return JSON matching the schema exactly.`,
+          },
+        ],
+      },
+    ],
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "match_summary",
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            matchLabel: { type: "string" },
+            batchPolicy: { type: "string" },
+            topics: {
+              type: "array",
+              maxItems: 5,
+              items: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  id: { type: "string" },
+                  title: { type: "string" },
+                  counts: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      support: { type: "number" },
+                      oppose: { type: "number" },
+                      neutral: { type: "number" },
+                    },
+                    required: ["support", "oppose", "neutral"],
+                  },
+                  supportSummary: { type: "string" },
+                  opposeSummary: { type: "string" },
+                  neutralSummary: { type: "string" },
+                },
+                required: [
+                  "id",
+                  "title",
+                  "counts",
+                  "supportSummary",
+                  "opposeSummary",
+                  "neutralSummary",
+                ],
+              },
+            },
+          },
+          required: ["matchLabel", "batchPolicy", "topics"],
+        },
+      },
+    },
+  });
+
+  const summary = response.output_text;
+  const parsed = JSON.parse(summary) as {
+    matchLabel: string;
+    batchPolicy: string;
+    topics: Array<unknown>;
+  };
+
+  const payload = {
+    matchLabel,
+    updatedAt: new Date().toISOString(),
+    batchPolicy: parsed.batchPolicy || "5分ごと / 10件ごと",
+    topics: parsed.topics,
+  };
+
+  const { error: insertError } = await supabaseAdmin
+    .from("summaries")
+    .insert({ room_id: roomId, snapshot: "live", payload });
+
+  if (insertError) {
+    return NextResponse.json(
+      { error: "Failed to store summary" },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({ ok: true, roomId, payload });
+}
+
+export async function POST(request: Request) {
+  return handleSummarize(request);
+}
+
+export async function GET(request: Request) {
+  return handleSummarize(request);
+}

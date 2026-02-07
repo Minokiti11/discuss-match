@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { signIn, signOut, useSession } from "next-auth/react";
 import { mockSummary } from "@/lib/mock";
+import { RoomSummary } from "@/lib/types";
 
 const stanceMeta = {
   support: { label: "賛成", color: "#22c55e" },
@@ -31,120 +33,64 @@ type TopicMap = {
   }[];
 };
 
-const topicMaps: TopicMap[] = [
-  {
-    id: "pressing",
-    title: "前線プレスは今の戦術の核か？",
-    prompt: "賛成・反対・中立それぞれの意見点が集まるマップ",
-    clusters: [
-      {
-        stance: "support",
-        center: { x: 260, y: 220 },
-        radius: 150,
-        subtopics: [
-          { label: "連動性", count: 34 },
-          { label: "回収率", count: 28 },
-          { label: "圧力", count: 22 },
-          { label: "守備強度", count: 26 },
-        ],
-      },
-      {
-        stance: "oppose",
-        center: { x: 640, y: 240 },
-        radius: 160,
-        subtopics: [
-          { label: "背後ケア", count: 30 },
-          { label: "疲労", count: 20 },
-          { label: "失点リスク", count: 26 },
-          { label: "中盤の穴", count: 18 },
-        ],
-      },
-      {
-        stance: "neutral",
-        center: { x: 460, y: 520 },
-        radius: 140,
-        subtopics: [
-          { label: "相手次第", count: 24 },
-          { label: "時間帯差", count: 18 },
-          { label: "保留", count: 22 },
-        ],
-      },
-    ],
-  },
-  {
-    id: "midfield",
-    title: "中盤の距離感は最適か？",
-    prompt: "中盤論点の賛否と中立が点で見える",
-    clusters: [
-      {
-        stance: "support",
-        center: { x: 240, y: 250 },
-        radius: 140,
-        subtopics: [
-          { label: "コンパクト", count: 26 },
-          { label: "奪取", count: 22 },
-          { label: "テンポ管理", count: 18 },
-        ],
-      },
-      {
-        stance: "oppose",
-        center: { x: 650, y: 240 },
-        radius: 150,
-        subtopics: [
-          { label: "展開不足", count: 24 },
-          { label: "外が空く", count: 20 },
-          { label: "縦詰まり", count: 18 },
-        ],
-      },
-      {
-        stance: "neutral",
-        center: { x: 460, y: 520 },
-        radius: 130,
-        subtopics: [
-          { label: "流動性", count: 22 },
-          { label: "相手依存", count: 16 },
-        ],
-      },
-    ],
-  },
-  {
-    id: "wing",
-    title: "両ウイングの仕掛けは活きているか？",
-    prompt: "サイド論点の意見点を拡大して確認",
-    clusters: [
-      {
-        stance: "support",
-        center: { x: 260, y: 230 },
-        radius: 150,
-        subtopics: [
-          { label: "1対1", count: 30 },
-          { label: "幅確保", count: 24 },
-          { label: "クロス", count: 18 },
-        ],
-      },
-      {
-        stance: "oppose",
-        center: { x: 640, y: 240 },
-        radius: 150,
-        subtopics: [
-          { label: "ロスト", count: 20 },
-          { label: "連動不足", count: 18 },
-          { label: "孤立", count: 16 },
-        ],
-      },
-      {
-        stance: "neutral",
-        center: { x: 460, y: 520 },
-        radius: 130,
-        subtopics: [
-          { label: "調子次第", count: 18 },
-          { label: "中盤次第", count: 14 },
-          { label: "判断待ち", count: 12 },
-        ],
-      },
-    ],
-  },
+const clusterCenters = [
+  { stance: "support" as const, center: { x: 260, y: 220 }, radius: 150 },
+  { stance: "oppose" as const, center: { x: 640, y: 240 }, radius: 160 },
+  { stance: "neutral" as const, center: { x: 460, y: 520 }, radius: 140 },
 ];
+
+const splitSummary = (text: string) =>
+  text
+    .split(/。|\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 3);
+
+const buildTopicMapsFromSummary = (summary: RoomSummary): TopicMap[] => {
+  if (!summary.topics.length) return [];
+
+  return summary.topics.map((topic, index) => {
+    const prompts = [
+      "賛成・反対・中立それぞれの意見点が集まるマップ",
+      "中盤論点の賛否と中立が点で見える",
+      "サイド論点の意見点を拡大して確認",
+    ];
+
+    const stanceToSummary = {
+      support: splitSummary(topic.supportSummary),
+      oppose: splitSummary(topic.opposeSummary),
+      neutral: splitSummary(topic.neutralSummary),
+    };
+
+    const stanceToCount = {
+      support: topic.counts.support,
+      oppose: topic.counts.oppose,
+      neutral: topic.counts.neutral,
+    };
+
+    const clusters = clusterCenters.map((base) => {
+      const parts = stanceToSummary[base.stance];
+      const count = stanceToCount[base.stance];
+      const per = parts.length ? Math.max(1, Math.round(count / parts.length)) : count;
+
+      const subtopics = parts.length
+        ? parts.map((label) => ({ label, count: per }))
+        : [{ label: `${stanceMeta[base.stance].label}意見`, count }];
+
+      return {
+        ...base,
+        subtopics,
+      };
+    });
+
+    return {
+      id: topic.id || `topic-${index}`,
+      title: topic.title,
+      prompt: prompts[index % prompts.length],
+      clusters,
+    };
+  });
+};
 
 const pseudoRandom = (seed: number) => {
   const x = Math.sin(seed) * 10000;
@@ -409,6 +355,80 @@ const MapCard = ({ topic }: { topic: TopicMap }) => {
 };
 
 export default function Home() {
+  const { data: session } = useSession();
+  const [summary, setSummary] = useState<RoomSummary>(mockSummary);
+  const [topicMaps, setTopicMaps] = useState<TopicMap[]>([]);
+  const [stance, setStance] = useState<Stance | null>(null);
+  const [comment, setComment] = useState("");
+  const [status, setStatus] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const roomId = "default";
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchSummary = async () => {
+      try {
+        const res = await fetch(`/api/rooms/${roomId}/summary`, {
+          cache: "no-store",
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as RoomSummary;
+        if (!cancelled) {
+          setSummary(data);
+          const maps = buildTopicMapsFromSummary(data);
+          setTopicMaps(maps.length ? maps : buildTopicMapsFromSummary(mockSummary));
+        }
+      } catch {
+        if (!cancelled) {
+          setTopicMaps(buildTopicMapsFromSummary(mockSummary));
+        }
+      }
+    };
+
+    fetchSummary();
+    return () => {
+      cancelled = true;
+    };
+  }, [roomId]);
+
+  const handleSubmit = async () => {
+    if (!stance || !comment.trim()) {
+      setStatus("スタンスとコメントを入力してください。");
+      return;
+    }
+    if (!session?.user) {
+      setStatus("投稿にはログインが必要です。");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setStatus(null);
+    try {
+      const res = await fetch(`/api/rooms/${roomId}/votes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stance, comment }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        setStatus(err?.error ?? "投稿に失敗しました。");
+      } else {
+        setComment("");
+        setStance(null);
+        setStatus("投稿しました。集約に反映されます。");
+      }
+    } catch {
+      setStatus("投稿に失敗しました。");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const mapsToRender = topicMaps.length
+    ? topicMaps
+    : buildTopicMapsFromSummary(summary);
+
   return (
     <main className="min-h-screen px-6 py-10 md:px-10">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-10">
@@ -423,7 +443,7 @@ export default function Home() {
               </h1>
             </div>
             <div className="rounded-full border border-[color:var(--line)] bg-white/70 px-4 py-2 text-xs text-[color:var(--muted)] shadow-sm">
-              更新: {mockSummary.batchPolicy}
+              更新: {summary.batchPolicy}
             </div>
           </div>
           <p className="max-w-2xl text-lg text-[color:var(--muted)]">
@@ -440,7 +460,7 @@ export default function Home() {
                   Live Vote
                 </p>
                 <h2 className="mt-2 text-2xl font-semibold text-[color:var(--panel-ink)]">
-                  {mockSummary.matchLabel}
+                  {summary.matchLabel}
                 </h2>
                 <p className="mt-2 text-sm text-[color:var(--muted)]">
                   匿名・300字まで。試合中は5分/10件ごとに反映。
@@ -455,8 +475,11 @@ export default function Home() {
                   {Object.entries(stanceMeta).map(([key, meta]) => (
                     <button
                       key={key}
-                      className="rounded-full border border-[color:var(--line)] px-4 py-2 text-sm font-medium text-[color:var(--panel-ink)] transition hover:translate-y-[-1px] hover:bg-white"
+                      className={`rounded-full border border-[color:var(--line)] px-4 py-2 text-sm font-medium text-[color:var(--panel-ink)] transition hover:translate-y-[-1px] hover:bg-white ${
+                        stance === key ? "bg-white" : ""
+                      }`}
                       type="button"
+                      onClick={() => setStance(key as Stance)}
                     >
                       {meta.label}
                     </button>
@@ -475,21 +498,55 @@ export default function Home() {
                   id="comment"
                   rows={6}
                   maxLength={300}
+                  value={comment}
+                  onChange={(event) => setComment(event.target.value)}
                   placeholder="例: 前線の連動は良いが、背後の対応が遅い。"
                   className="mt-3 w-full rounded-2xl border border-[color:var(--line)] bg-white/80 p-4 text-sm text-[color:var(--panel-ink)] outline-none transition focus:border-[color:var(--accent)] focus:ring-2 focus:ring-[color:var(--accent)]/20"
                 />
                 <div className="mt-2 flex items-center justify-between text-xs text-[color:var(--muted)]">
-                  <span>匿名投稿。公開時には要約にのみ反映。</span>
-                  <span>0 / 300</span>
+                  <span>
+                    {session?.user
+                      ? `ログイン中: ${session.user.name ?? ""}`
+                      : "閲覧のみ可能。投稿にはログインが必要。"}
+                  </span>
+                  <span>{comment.length} / 300</span>
                 </div>
               </div>
 
+              {status && (
+                <div className="rounded-2xl border border-[color:var(--line)] bg-white/70 px-4 py-3 text-xs text-[color:var(--muted)]">
+                  {status}
+                </div>
+              )}
+
               <button
-                className="rounded-2xl bg-[color:var(--accent)] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition hover:translate-y-[-1px] hover:bg-[color:var(--accent-strong)]"
+                className="rounded-2xl bg-[color:var(--accent)] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition hover:translate-y-[-1px] hover:bg-[color:var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
                 type="button"
+                disabled={!session?.user || isSubmitting}
+                onClick={handleSubmit}
               >
-                意見を送る
+                {isSubmitting ? "送信中..." : "意見を送る"}
               </button>
+
+              <div className="flex flex-wrap gap-2 text-xs">
+                {session?.user ? (
+                  <button
+                    className="rounded-full border border-[color:var(--line)] bg-white px-4 py-2 font-semibold text-[color:var(--panel-ink)]"
+                    type="button"
+                    onClick={() => signOut()}
+                  >
+                    ログアウト
+                  </button>
+                ) : (
+                  <button
+                    className="rounded-full border border-[color:var(--line)] bg-white px-4 py-2 font-semibold text-[color:var(--panel-ink)]"
+                    type="button"
+                    onClick={() => signIn("google")}
+                  >
+                    Googleでログイン
+                  </button>
+                )}
+              </div>
 
               <div className="rounded-2xl border border-[color:var(--line)] bg-white/70 p-4 text-xs text-[color:var(--muted)]">
                 <p className="font-semibold text-[color:var(--panel-ink)]">集約プロセス</p>
@@ -512,7 +569,7 @@ export default function Home() {
                   </h2>
                 </div>
                 <div className="rounded-full bg-[color:var(--accent-warm)]/10 px-3 py-1 text-xs font-semibold text-[color:var(--accent-warm)]">
-                  更新 {mockSummary.updatedAt}
+                  更新 {summary.updatedAt}
                 </div>
               </div>
 
@@ -521,7 +578,7 @@ export default function Home() {
               </p>
 
               <div className="mt-4 flex snap-x snap-mandatory gap-5 overflow-x-auto pb-4">
-                {topicMaps.map((topic) => (
+                {mapsToRender.map((topic) => (
                   <div key={topic.id} className="snap-center">
                     <MapCard topic={topic} />
                   </div>
