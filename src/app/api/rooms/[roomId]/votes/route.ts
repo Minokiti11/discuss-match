@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { VoteInput, Stance } from "@/lib/types";
-import { authOptions } from "@/lib/auth";
-import { supabaseAdmin } from "@/lib/supabase";
+import { getAuthOptions } from "@/lib/auth";
+import { getSupabaseAdmin } from "@/lib/supabase";
 
 const validStances: Stance[] = ["support", "oppose", "neutral"];
 
@@ -11,10 +11,11 @@ export async function POST(
   { params }: { params: Promise<{ roomId: string }> }
 ) {
   const { roomId } = await params;
-  const session = await getServerSession(authOptions);
+  const session = await getServerSession(getAuthOptions());
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const supabaseAdmin = getSupabaseAdmin();
 
   const body = (await request.json().catch(() => null)) as VoteInput | null;
 

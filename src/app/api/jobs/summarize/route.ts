@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
-import { supabaseAdmin } from "@/lib/supabase";
+import { getSupabaseAdmin } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 
@@ -38,6 +38,7 @@ async function handleSummarize(request: Request) {
   const roomId = body?.roomId ?? "default";
   const matchLabel = body?.matchLabel ?? "TBD: 次の注目試合";
 
+  const supabaseAdmin = getSupabaseAdmin();
   const { data: votes, error } = await supabaseAdmin
     .from("votes")
     .select("stance, comment")
