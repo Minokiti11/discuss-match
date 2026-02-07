@@ -186,7 +186,7 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
   }, [points, topic]);
 
   const resetView = () => {
-    normalTransformRef.current?.setTransform(-135, -50, 0.5);
+    normalTransformRef.current?.resetTransform();
   };
 
   const buildThreadUrl = (point: OpinionPoint) => {
@@ -202,16 +202,16 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
   const renderMap = (
     heightClass: string,
     ref: React.RefObject<ReactZoomPanPinchRef | null>,
-    initialScale: number,
-    initialPosition: { x: number; y: number }
+    initialScale: number
   ) => (
     <TransformWrapper
       ref={ref}
       minScale={0.6}
       maxScale={2.2}
       initialScale={initialScale}
-      initialPositionX={initialPosition.x}
-      initialPositionY={initialPosition.y}
+      centerOnInit
+      limitToBounds
+      centerZoomedOut
       wheel={{ step: 0.08 }}
       doubleClick={{ disabled: true }}
       panning={{ velocityDisabled: true }}
@@ -219,7 +219,7 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
       <TransformComponent
         wrapperClass={`relative overflow-hidden rounded-2xl border border-[color:var(--line)] bg-[color:var(--background)] ${heightClass}`}
         contentClass="relative"
-        wrapperStyle={{ touchAction: "none" }}
+        wrapperStyle={{ touchAction: "none", width: "100%", height: "100%" }}
       >
         {!points ? (
           <div className="absolute inset-0 flex items-center justify-center text-xs text-[color:var(--muted)]">
@@ -379,12 +379,7 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
       </div>
 
       <div className="mt-4">
-        {renderMap(
-          "h-[360px] sm:h-[420px]",
-          normalTransformRef,
-          0.5,
-          { x: -135, y: -50 }
-        )}
+        {renderMap("h-[360px] sm:h-[420px]", normalTransformRef, 0.6)}
       </div>
 
       <div className="mt-3 flex flex-wrap gap-3 text-xs">
@@ -428,9 +423,7 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
               <button
                 className="rounded-full border border-[color:var(--line)] bg-white px-3 py-1 font-semibold text-[color:var(--panel-ink)]"
                 type="button"
-                onClick={() =>
-                  fullTransformRef.current?.setTransform(-135, -50, 0.6)
-                }
+                onClick={() => fullTransformRef.current?.resetTransform()}
               >
                 Reset
               </button>
@@ -444,12 +437,7 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
             </div>
           </div>
           <div className="flex-1 p-4">
-            {renderMap(
-              "h-[calc(100dvh-140px)]",
-              fullTransformRef,
-              0.6,
-              { x: -135, y: -50 }
-            )}
+            {renderMap("h-[calc(100dvh-140px)]", fullTransformRef, 0.7)}
           </div>
         </div>
       )}
