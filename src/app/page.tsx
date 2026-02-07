@@ -4,6 +4,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { mockSummary } from "@/lib/mock";
 import { RoomSummary } from "@/lib/types";
+import {
+  TransformComponent,
+  TransformWrapper,
+  type ReactZoomPanPinchRef,
+} from "react-zoom-pan-pinch";
 
 const stanceMeta = {
   support: { label: "賛成", color: "#22c55e" },
@@ -130,15 +135,9 @@ const buildOpinionPoints = (topic: TopicMap) => {
 };
 
 const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
-  const [scale, setScale] = useState(0.5);
-  const [offset, setOffset] = useState({ x: -135, y: -50 });
-  const [isDragging, setIsDragging] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
-  const dragRef = useRef({ x: 0, y: 0 });
-  const offsetRef = useRef({ x: 0, y: 0 });
-  const movedRef = useRef(false);
-  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
-  const pinchRef = useRef<{ distance: number; scale: number } | null>(null);
+  const normalTransformRef = useRef<ReactZoomPanPinchRef | null>(null);
+  const fullTransformRef = useRef<ReactZoomPanPinchRef | null>(null);
 
   const [points, setPoints] = useState<OpinionPoint[] | null>(null);
 
@@ -186,85 +185,8 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
     );
   }, [points, topic]);
 
-  const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
-    const delta = event.deltaY > 0 ? -0.08 : 0.08;
-    setScale((prev) => Math.min(2.2, Math.max(0.6, prev + delta)));
-  };
-
-  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    event.currentTarget.setPointerCapture(event.pointerId);
-    pointersRef.current.set(event.pointerId, {
-      x: event.clientX,
-      y: event.clientY,
-    });
-
-    if (pointersRef.current.size === 2) {
-      const [first, second] = Array.from(pointersRef.current.values());
-      const distance = Math.hypot(first.x - second.x, first.y - second.y);
-      pinchRef.current = { distance, scale };
-      setIsDragging(false);
-      movedRef.current = false;
-      return;
-    }
-
-    setIsDragging(true);
-    movedRef.current = false;
-    dragRef.current = { x: event.clientX, y: event.clientY };
-    offsetRef.current = offset;
-  };
-
-  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!pointersRef.current.has(event.pointerId)) return;
-    pointersRef.current.set(event.pointerId, {
-      x: event.clientX,
-      y: event.clientY,
-    });
-
-    if (pointersRef.current.size === 2 && pinchRef.current) {
-      const [first, second] = Array.from(pointersRef.current.values());
-      const distance = Math.hypot(first.x - second.x, first.y - second.y);
-      const ratio = distance / pinchRef.current.distance;
-      const nextScale = Math.min(
-        2.2,
-        Math.max(0.6, pinchRef.current.scale * ratio)
-      );
-      setScale(nextScale);
-      return;
-    }
-
-    if (!isDragging) return;
-    const dx = event.clientX - dragRef.current.x;
-    const dy = event.clientY - dragRef.current.y;
-    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
-      movedRef.current = true;
-    }
-    setOffset({ x: offsetRef.current.x + dx, y: offsetRef.current.y + dy });
-  };
-
-  const handlePointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (pointersRef.current.has(event.pointerId)) {
-      pointersRef.current.delete(event.pointerId);
-    }
-    event.currentTarget.releasePointerCapture(event.pointerId);
-
-    if (pointersRef.current.size < 2) {
-      pinchRef.current = null;
-    }
-
-    if (pointersRef.current.size === 1) {
-      const remaining = Array.from(pointersRef.current.values())[0];
-      dragRef.current = { x: remaining.x, y: remaining.y };
-      offsetRef.current = offset;
-      setIsDragging(true);
-      return;
-    }
-
-    setIsDragging(false);
-  };
-
   const resetView = () => {
-    setScale(0.47);
-    setOffset({ x: -135, y: -50 });
+    normalTransformRef.current?.setTransform(-135, -50, 0.5);
   };
 
   const buildThreadUrl = (point: OpinionPoint) => {
@@ -277,31 +199,33 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
     return `/topics/${point.topicId}?${params.toString()}`;
   };
 
-  const renderMap = (heightClass: string) => (
-    <div
-      className={`relative overflow-hidden rounded-2xl border border-[color:var(--line)] bg-[color:var(--background)] ${heightClass}`}
-      onWheel={handleWheel}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerUp}
-      onPointerLeave={handlePointerUp}
-      style={{ touchAction: "none" }}
+  const renderMap = (
+    heightClass: string,
+    ref: React.RefObject<ReactZoomPanPinchRef | null>,
+    initialScale: number,
+    initialPosition: { x: number; y: number }
+  ) => (
+    <TransformWrapper
+      ref={ref}
+      minScale={0.6}
+      maxScale={2.2}
+      initialScale={initialScale}
+      initialPositionX={initialPosition.x}
+      initialPositionY={initialPosition.y}
+      wheel={{ step: 0.08 }}
+      doubleClick={{ disabled: true }}
+      panning={{ velocityDisabled: true }}
     >
-      {!points ? (
-        <div className="absolute inset-0 flex items-center justify-center text-xs text-[color:var(--muted)]">
-          読み込み中…
-        </div>
-      ) : (
-        <div
-          className="absolute inset-0"
-          style={{
-            transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
-            transformOrigin: "50% 50%",
-            transition: isDragging ? "none" : "transform 0.08s ease-out",
-            touchAction: "none",
-          }}
-        >
+      <TransformComponent
+        wrapperClass={`relative overflow-hidden rounded-2xl border border-[color:var(--line)] bg-[color:var(--background)] ${heightClass}`}
+        contentClass="relative"
+        wrapperStyle={{ touchAction: "none" }}
+      >
+        {!points ? (
+          <div className="absolute inset-0 flex items-center justify-center text-xs text-[color:var(--muted)]">
+            読み込み中…
+          </div>
+        ) : (
           <div
             className="relative"
             style={{ width: 900, height: 700 }}
@@ -398,14 +322,14 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
               );
             })}
           </div>
+        )}
+        <div className="pointer-events-none absolute left-3 top-3 flex flex-col gap-1 rounded-xl border border-[color:var(--line)] bg-white/80 px-3 py-2 text-[11px] text-[color:var(--muted)] shadow-sm">
+          <span>ドラッグ: 移動</span>
+          <span>ピンチ / + − : ズーム</span>
+          <span>点タップ: スレッドへ</span>
         </div>
-      )}
-      <div className="pointer-events-none absolute left-3 top-3 flex flex-col gap-1 rounded-xl border border-[color:var(--line)] bg-white/80 px-3 py-2 text-[11px] text-[color:var(--muted)] shadow-sm">
-        <span>ドラッグ: 移動</span>
-        <span>+ / − : ズーム</span>
-        <span>点タップ: スレッドへ</span>
-      </div>
-    </div>
+      </TransformComponent>
+    </TransformWrapper>
   );
 
   return (
@@ -433,14 +357,14 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
           <button
             className="rounded-full border border-[color:var(--line)] bg-white px-3 py-1 font-semibold text-[color:var(--panel-ink)]"
             type="button"
-            onClick={() => setScale((prev) => Math.min(2.2, prev + 0.15))}
+            onClick={() => normalTransformRef.current?.zoomIn(0.15)}
           >
             +
           </button>
           <button
             className="rounded-full border border-[color:var(--line)] bg-white px-3 py-1 font-semibold text-[color:var(--panel-ink)]"
             type="button"
-            onClick={() => setScale((prev) => Math.max(0.6, prev - 0.15))}
+            onClick={() => normalTransformRef.current?.zoomOut(0.15)}
           >
             −
           </button>
@@ -454,7 +378,14 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
         </div>
       </div>
 
-      <div className="mt-4">{renderMap("h-[360px] sm:h-[420px]")}</div>
+      <div className="mt-4">
+        {renderMap(
+          "h-[360px] sm:h-[420px]",
+          normalTransformRef,
+          0.5,
+          { x: -135, y: -50 }
+        )}
+      </div>
 
       <div className="mt-3 flex flex-wrap gap-3 text-xs">
         {Object.entries(stanceMeta).map(([key, meta]) => (
@@ -483,21 +414,23 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
               <button
                 className="rounded-full border border-[color:var(--line)] bg-white px-3 py-1 font-semibold text-[color:var(--panel-ink)]"
                 type="button"
-                onClick={() => setScale((prev) => Math.min(2.2, prev + 0.15))}
+                onClick={() => fullTransformRef.current?.zoomIn(0.15)}
               >
                 +
               </button>
               <button
                 className="rounded-full border border-[color:var(--line)] bg-white px-3 py-1 font-semibold text-[color:var(--panel-ink)]"
                 type="button"
-                onClick={() => setScale((prev) => Math.max(0.6, prev - 0.15))}
+                onClick={() => fullTransformRef.current?.zoomOut(0.15)}
               >
                 −
               </button>
               <button
                 className="rounded-full border border-[color:var(--line)] bg-white px-3 py-1 font-semibold text-[color:var(--panel-ink)]"
                 type="button"
-                onClick={resetView}
+                onClick={() =>
+                  fullTransformRef.current?.setTransform(-135, -50, 0.6)
+                }
               >
                 Reset
               </button>
@@ -511,7 +444,12 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
             </div>
           </div>
           <div className="flex-1 p-4">
-            {renderMap("h-[calc(100dvh-140px)]")}
+            {renderMap(
+              "h-[calc(100dvh-140px)]",
+              fullTransformRef,
+              0.6,
+              { x: -135, y: -50 }
+            )}
           </div>
         </div>
       )}
