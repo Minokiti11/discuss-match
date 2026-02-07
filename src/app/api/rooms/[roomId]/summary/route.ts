@@ -1,15 +1,16 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { mockSummary } from "@/lib/mock";
 import { supabaseAdmin } from "@/lib/supabase";
 
 export async function GET(
-  _request: Request,
-  { params }: { params: { roomId: string } }
+  _request: NextRequest,
+  { params }: { params: Promise<{ roomId: string }> }
 ) {
+  const { roomId } = await params;
   const { data } = await supabaseAdmin
     .from("summaries")
     .select("payload, created_at")
-    .eq("room_id", params.roomId)
+    .eq("room_id", roomId)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -17,13 +18,13 @@ export async function GET(
   if (!data?.payload) {
     return NextResponse.json({
       ...mockSummary,
-      roomId: params.roomId,
+      roomId,
     });
   }
 
   return NextResponse.json({
     ...data.payload,
-    roomId: params.roomId,
+    roomId,
     updatedAt: data.created_at ?? new Date().toISOString(),
   });
 }

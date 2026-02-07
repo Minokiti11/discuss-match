@@ -70,70 +70,24 @@ async function handleSummarize(request: Request) {
       },
       {
         role: "user",
-        content: [
-          {
-            type: "text",
-            text: `Votes: ${JSON.stringify(votes)}\n\nCreate up to 5 topics. For each topic, group relevant votes and count support/oppose/neutral. Provide 2-3 short sentences for each stance (support/oppose/neutral). Return JSON matching the schema exactly.`,
-          },
-        ],
+        content: `Votes: ${JSON.stringify(
+          votes
+        )}\n\nCreate up to 5 topics. For each topic, group relevant votes and count support/oppose/neutral. Provide 2-3 short sentences for each stance (support/oppose/neutral). Return JSON matching the schema exactly.`,
       },
     ],
-    response_format: {
-      type: "json_schema",
-      json_schema: {
-        name: "match_summary",
-        schema: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            matchLabel: { type: "string" },
-            batchPolicy: { type: "string" },
-            topics: {
-              type: "array",
-              maxItems: 5,
-              items: {
-                type: "object",
-                additionalProperties: false,
-                properties: {
-                  id: { type: "string" },
-                  title: { type: "string" },
-                  counts: {
-                    type: "object",
-                    additionalProperties: false,
-                    properties: {
-                      support: { type: "number" },
-                      oppose: { type: "number" },
-                      neutral: { type: "number" },
-                    },
-                    required: ["support", "oppose", "neutral"],
-                  },
-                  supportSummary: { type: "string" },
-                  opposeSummary: { type: "string" },
-                  neutralSummary: { type: "string" },
-                },
-                required: [
-                  "id",
-                  "title",
-                  "counts",
-                  "supportSummary",
-                  "opposeSummary",
-                  "neutralSummary",
-                ],
-              },
-            },
-          },
-          required: ["matchLabel", "batchPolicy", "topics"],
-        },
-      },
-    },
   });
 
   const summary = response.output_text;
-  const parsed = JSON.parse(summary) as {
-    matchLabel: string;
-    batchPolicy: string;
-    topics: Array<unknown>;
-  };
+  let parsed: { matchLabel: string; batchPolicy: string; topics: Array<unknown> };
+
+  try {
+    parsed = JSON.parse(summary);
+  } catch {
+    return NextResponse.json(
+      { error: "Failed to parse summary JSON", raw: summary },
+      { status: 500 }
+    );
+  }
 
   const payload = {
     matchLabel,
