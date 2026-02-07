@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { mockSummary } from "@/lib/mock";
 import { RoomSummary } from "@/lib/types";
 
@@ -19,6 +20,8 @@ type OpinionPoint = {
   subtopic: string;
   x: number;
   y: number;
+  topicId: string;
+  topicTitle: string;
 };
 
 type TopicMap = {
@@ -117,6 +120,8 @@ const buildOpinionPoints = (topic: TopicMap) => {
           subtopic: subtopic.label,
           x,
           y,
+          topicId: topic.id,
+          topicTitle: topic.title,
         });
       }
     });
@@ -125,7 +130,8 @@ const buildOpinionPoints = (topic: TopicMap) => {
   return points;
 };
 
-const MapCard = ({ topic }: { topic: TopicMap }) => {
+const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
+  const router = useRouter();
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -187,6 +193,16 @@ const MapCard = ({ topic }: { topic: TopicMap }) => {
   const resetView = () => {
     setScale(1);
     setOffset({ x: 0, y: 0 });
+  };
+
+  const handlePointClick = (point: OpinionPoint) => {
+    const params = new URLSearchParams({
+      roomId,
+      topic: point.topicTitle,
+      stance: point.stance,
+      subtopic: point.subtopic,
+    });
+    router.push(`/topics/${point.topicId}?${params.toString()}`);
   };
 
   return (
@@ -309,6 +325,8 @@ const MapCard = ({ topic }: { topic: TopicMap }) => {
                   r={3.2}
                   fill={stanceMeta[point.stance].color}
                   opacity={0.85}
+                  className="cursor-pointer"
+                  onClick={() => handlePointClick(point)}
                 >
                   <title>{point.subtopic}</title>
                 </circle>
@@ -580,7 +598,7 @@ export default function Home() {
               <div className="mt-4 flex snap-x snap-mandatory gap-5 overflow-x-auto pb-4">
                 {mapsToRender.map((topic) => (
                   <div key={topic.id} className="snap-center">
-                    <MapCard topic={topic} />
+                    <MapCard topic={topic} roomId={roomId} />
                   </div>
                 ))}
               </div>
