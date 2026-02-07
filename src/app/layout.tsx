@@ -19,6 +19,12 @@ export const metadata: Metadata = {
     "Anonymous match opinions, clustered and summarized into topic pulses.",
 };
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
