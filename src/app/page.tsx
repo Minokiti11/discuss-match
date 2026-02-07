@@ -340,7 +340,13 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
                   fill={stanceMeta[point.stance].color}
                   opacity={0.85}
                   className="cursor-pointer"
-                  onClick={() => handlePointClick(point)}
+                  onPointerDown={(event) => {
+                    event.stopPropagation();
+                  }}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    handlePointClick(point);
+                  }}
                 >
                   <title>{point.subtopic}</title>
                 </circle>
