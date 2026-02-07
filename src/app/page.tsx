@@ -137,6 +137,7 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
   const [isDragging, setIsDragging] = useState(false);
   const dragRef = useRef({ x: 0, y: 0 });
   const offsetRef = useRef({ x: 0, y: 0 });
+  const movedRef = useRef(false);
 
   const [points, setPoints] = useState<OpinionPoint[] | null>(null);
 
@@ -153,6 +154,16 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
             point.stance === cluster.stance &&
             point.subtopic === subtopic.label
         );
+
+        if (relatedPoints.length === 0) {
+          return {
+            label: subtopic.label,
+            x: cluster.center.x,
+            y: cluster.center.y,
+            stance: cluster.stance,
+          };
+        }
+
         const avgX =
           relatedPoints.reduce((acc, point) => acc + point.x, 0) /
           relatedPoints.length;
@@ -173,21 +184,23 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     setIsDragging(true);
+    movedRef.current = false;
     dragRef.current = { x: event.clientX, y: event.clientY };
     offsetRef.current = offset;
-    event.currentTarget.setPointerCapture(event.pointerId);
   };
 
   const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!isDragging) return;
     const dx = event.clientX - dragRef.current.x;
     const dy = event.clientY - dragRef.current.y;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+      movedRef.current = true;
+    }
     setOffset({ x: offsetRef.current.x + dx, y: offsetRef.current.y + dy });
   };
 
-  const handlePointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+  const handlePointerUp = () => {
     setIsDragging(false);
-    event.currentTarget.releasePointerCapture(event.pointerId);
   };
 
   const resetView = () => {
@@ -196,6 +209,7 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
   };
 
   const handlePointClick = (point: OpinionPoint) => {
+    if (movedRef.current) return;
     const params = new URLSearchParams({
       roomId,
       topic: point.topicTitle,
