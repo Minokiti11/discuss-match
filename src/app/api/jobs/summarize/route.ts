@@ -114,16 +114,16 @@ async function handleSummarize(request: Request) {
             oppose: Number(topic.counts.oppose ?? 0),
             neutral: Number(topic.counts.neutral ?? 0),
           },
-          supportSummary: String(topic.supportSummary ?? \"\"),
-          opposeSummary: String(topic.opposeSummary ?? \"\"),
-          neutralSummary: String(topic.neutralSummary ?? \"\"),
+          supportSummary: String(topic.supportSummary ?? ""),
+          opposeSummary: String(topic.opposeSummary ?? ""),
+          neutralSummary: String(topic.neutralSummary ?? ""),
         };
       }
 
       const votes = topic?.votes ?? {};
       const summaryBlock = topic?.summary ?? {};
       const toLines = (value: any) =>
-        Array.isArray(value) ? value.join(\" \") : String(value ?? \"\");
+        Array.isArray(value) ? value.join(" ") : String(value ?? "");
 
       return {
         id: topic?.id ?? `topic-${index + 1}`,
