@@ -323,7 +323,7 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
                   onClick={() => {
                     window.location.href = href;
                   }}
-                  className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full focus:outline-none"
+                  className="absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full transition hover:scale-110 focus:outline-none sm:h-3 sm:w-3"
                   style={{
                     left: point.x,
                     top: point.y,
@@ -337,6 +337,11 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
           </div>
         </div>
       )}
+      <div className="pointer-events-none absolute left-3 top-3 flex flex-col gap-1 rounded-xl border border-[color:var(--line)] bg-white/80 px-3 py-2 text-[11px] text-[color:var(--muted)] shadow-sm">
+        <span>ドラッグ: 移動</span>
+        <span>+ / − : ズーム</span>
+        <span>点タップ: スレッドへ</span>
+      </div>
     </div>
   );
 
@@ -411,13 +416,36 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
                 {topic.title}
               </p>
             </div>
-            <button
-              className="rounded-full border border-[color:var(--line)] bg-white px-4 py-2 text-xs font-semibold text-[color:var(--panel-ink)]"
-              type="button"
-              onClick={() => setIsExpanded(false)}
-            >
-              閉じる
-            </button>
+            <div className="flex items-center gap-2 text-xs">
+              <button
+                className="rounded-full border border-[color:var(--line)] bg-white px-3 py-1 font-semibold text-[color:var(--panel-ink)]"
+                type="button"
+                onClick={() => setScale((prev) => Math.min(2.2, prev + 0.15))}
+              >
+                +
+              </button>
+              <button
+                className="rounded-full border border-[color:var(--line)] bg-white px-3 py-1 font-semibold text-[color:var(--panel-ink)]"
+                type="button"
+                onClick={() => setScale((prev) => Math.max(0.6, prev - 0.15))}
+              >
+                −
+              </button>
+              <button
+                className="rounded-full border border-[color:var(--line)] bg-white px-3 py-1 font-semibold text-[color:var(--panel-ink)]"
+                type="button"
+                onClick={resetView}
+              >
+                Reset
+              </button>
+              <button
+                className="rounded-full border border-[color:var(--line)] bg-white px-4 py-2 text-xs font-semibold text-[color:var(--panel-ink)]"
+                type="button"
+                onClick={() => setIsExpanded(false)}
+              >
+                閉じる
+              </button>
+            </div>
           </div>
           <div className="flex-1 p-4">
             {renderMap("h-[calc(100dvh-140px)]")}
@@ -593,6 +621,24 @@ export default function Home() {
                 </div>
               )}
 
+              {!session?.user && (
+                <div className="rounded-2xl border border-dashed border-[color:var(--line)] bg-white/70 p-4 text-xs text-[color:var(--muted)]">
+                  <p className="font-semibold text-[color:var(--panel-ink)]">
+                    閲覧のみ可能です
+                  </p>
+                  <p className="mt-2">
+                    投稿にはログインが必要です。Googleでログインするとすぐ投稿できます。
+                  </p>
+                  <button
+                    className="mt-3 w-full rounded-2xl bg-[color:var(--accent)] px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition hover:translate-y-[-1px] hover:bg-[color:var(--accent-strong)]"
+                    type="button"
+                    onClick={() => signIn("google")}
+                  >
+                    Googleでログインして投稿
+                  </button>
+                </div>
+              )}
+
               <button
                 className="rounded-2xl bg-[color:var(--accent)] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition hover:translate-y-[-1px] hover:bg-[color:var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
                 type="button"
@@ -602,8 +648,8 @@ export default function Home() {
                 {isSubmitting ? "送信中..." : "意見を送る"}
               </button>
 
-              <div className="flex flex-wrap gap-2 text-xs">
-                {session?.user ? (
+              {session?.user && (
+                <div className="flex flex-wrap gap-2 text-xs">
                   <button
                     className="rounded-full border border-[color:var(--line)] bg-white px-4 py-2 font-semibold text-[color:var(--panel-ink)]"
                     type="button"
@@ -611,16 +657,8 @@ export default function Home() {
                   >
                     ログアウト
                   </button>
-                ) : (
-                  <button
-                    className="rounded-full border border-[color:var(--line)] bg-white px-4 py-2 font-semibold text-[color:var(--panel-ink)]"
-                    type="button"
-                    onClick={() => signIn("google")}
-                  >
-                    Googleでログイン
-                  </button>
-                )}
-              </div>
+                </div>
+              )}
 
               <div className="rounded-2xl border border-[color:var(--line)] bg-white/70 p-4 text-xs text-[color:var(--muted)]">
                 <p className="font-semibold text-[color:var(--panel-ink)]">集約プロセス</p>
@@ -648,7 +686,7 @@ export default function Home() {
               </div>
 
               <p className="mt-3 text-sm text-[color:var(--muted)]">
-                トピックごとに縦に並べて表示します。各点は参加者の意見を表します。
+                トピックごとに縦に並べて表示します。全画面で拡大して閲覧できます。
               </p>
 
               <div className="mt-4 flex flex-col gap-5">
