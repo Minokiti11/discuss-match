@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
 import { mockSummary } from "@/lib/mock";
 import { RoomSummary } from "@/lib/types";
 
@@ -131,10 +130,10 @@ const buildOpinionPoints = (topic: TopicMap) => {
 };
 
 const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
-  const router = useRouter();
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
+  const [debug, setDebug] = useState<string | null>(null);
   const dragRef = useRef({ x: 0, y: 0 });
   const offsetRef = useRef({ x: 0, y: 0 });
   const movedRef = useRef(false);
@@ -177,7 +176,6 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
   }, [points, topic]);
 
   const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
-    event.preventDefault();
     const delta = event.deltaY > 0 ? -0.08 : 0.08;
     setScale((prev) => Math.min(2.2, Math.max(0.6, prev + delta)));
   };
@@ -208,14 +206,14 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
     setOffset({ x: 0, y: 0 });
   };
 
-  const handlePointClick = (point: OpinionPoint) => {
+  const buildThreadUrl = (point: OpinionPoint) => {
     const params = new URLSearchParams({
       roomId,
       topic: point.topicTitle,
       stance: point.stance,
       subtopic: point.subtopic,
     });
-    router.push(`/topics/${point.topicId}?${params.toString()}`);
+    return `/topics/${point.topicId}?${params.toString()}`;
   };
 
   return (
@@ -264,6 +262,37 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
+        onClickCapture={(event) => {
+          const target = event.target as Element | null;
+          setDebug(target ? `click:${target.tagName}` : "click:none");
+        }}
+        onPointerUpCapture={(event) => {
+          const el = document.elementFromPoint(
+            event.clientX,
+            event.clientY
+          );
+          if (!el) return;
+          const circle = el.closest("circle");
+          if (!circle) return;
+          const stance = circle.getAttribute("data-point-stance");
+          const subtopic = circle.getAttribute("data-point-subtopic");
+          const topicId = circle.getAttribute("data-point-topic-id");
+          const topicTitle = circle.getAttribute("data-point-topic-title");
+          const pointId = circle.getAttribute("data-point-id");
+          if (!stance || !subtopic || !topicId || !topicTitle || !pointId) {
+            return;
+          }
+          setDebug(`hit:${pointId}`);
+          window.location.href = buildThreadUrl({
+            id: pointId,
+            stance: stance as Stance,
+            subtopic: subtopic,
+            topicId: topicId,
+            topicTitle: topicTitle,
+            x: event.clientX,
+            y: event.clientY,
+          } as OpinionPoint);
+        }}
       >
         {!points ? (
           <div className="absolute inset-0 flex items-center justify-center text-xs text-[color:var(--muted)]">
@@ -276,107 +305,115 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
               transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
               transformOrigin: "50% 50%",
               transition: isDragging ? "none" : "transform 0.08s ease-out",
+              touchAction: "none",
             }}
           >
-            <svg
-              viewBox="0 0 900 700"
-              className="h-full w-full"
+            <div
+              className="relative"
+              style={{ width: 900, height: 700 }}
               role="img"
               aria-label="Opinion points map"
             >
-              <defs>
-                <radialGradient id="supportGlow" cx="50%" cy="50%" r="60%">
-                  <stop offset="0%" stopColor="#22c55e" stopOpacity="0.25" />
-                  <stop offset="100%" stopColor="#22c55e" stopOpacity="0.04" />
-                </radialGradient>
-                <radialGradient id="opposeGlow" cx="50%" cy="50%" r="60%">
-                  <stop offset="0%" stopColor="#f43f5e" stopOpacity="0.25" />
-                  <stop offset="100%" stopColor="#f43f5e" stopOpacity="0.04" />
-                </radialGradient>
-                <radialGradient id="neutralGlow" cx="50%" cy="50%" r="60%">
-                  <stop offset="0%" stopColor="#94a3b8" stopOpacity="0.2" />
-                  <stop offset="100%" stopColor="#94a3b8" stopOpacity="0.04" />
-                </radialGradient>
-              </defs>
+              <svg viewBox="0 0 900 700" className="h-full w-full">
+                <defs>
+                  <radialGradient id="supportGlow" cx="50%" cy="50%" r="60%">
+                    <stop offset="0%" stopColor="#22c55e" stopOpacity="0.25" />
+                    <stop offset="100%" stopColor="#22c55e" stopOpacity="0.04" />
+                  </radialGradient>
+                  <radialGradient id="opposeGlow" cx="50%" cy="50%" r="60%">
+                    <stop offset="0%" stopColor="#f43f5e" stopOpacity="0.25" />
+                    <stop offset="100%" stopColor="#f43f5e" stopOpacity="0.04" />
+                  </radialGradient>
+                  <radialGradient id="neutralGlow" cx="50%" cy="50%" r="60%">
+                    <stop offset="0%" stopColor="#94a3b8" stopOpacity="0.2" />
+                    <stop offset="100%" stopColor="#94a3b8" stopOpacity="0.04" />
+                  </radialGradient>
+                </defs>
 
-              {topic.clusters.map((cluster) => (
-                <g key={cluster.stance}>
-                  <circle
-                    cx={cluster.center.x}
-                    cy={cluster.center.y}
-                    r={cluster.radius}
-                    fill={`url(#${cluster.stance}Glow)`}
-                  />
-                  <circle
-                    cx={cluster.center.x}
-                    cy={cluster.center.y}
-                    r={cluster.radius - 24}
-                    fill="none"
-                    stroke={stanceMeta[cluster.stance].color}
-                    strokeOpacity="0.3"
-                    strokeWidth="2"
-                    strokeDasharray="6 8"
-                  />
-                  <text
-                    x={cluster.center.x}
-                    y={cluster.center.y}
-                    textAnchor="middle"
-                    fontSize="16"
-                    fill={stanceMeta[cluster.stance].color}
-                    fontWeight="600"
-                  >
-                    {stanceMeta[cluster.stance].label}
-                  </text>
-                </g>
-              ))}
+                {topic.clusters.map((cluster) => (
+                  <g key={cluster.stance}>
+                    <circle
+                      cx={cluster.center.x}
+                      cy={cluster.center.y}
+                      r={cluster.radius}
+                      fill={`url(#${cluster.stance}Glow)`}
+                    />
+                    <circle
+                      cx={cluster.center.x}
+                      cy={cluster.center.y}
+                      r={cluster.radius - 24}
+                      fill="none"
+                      stroke={stanceMeta[cluster.stance].color}
+                      strokeOpacity="0.3"
+                      strokeWidth="2"
+                      strokeDasharray="6 8"
+                    />
+                    <text
+                      x={cluster.center.x}
+                      y={cluster.center.y}
+                      textAnchor="middle"
+                      fontSize="16"
+                      fill={stanceMeta[cluster.stance].color}
+                      fontWeight="600"
+                    >
+                      {stanceMeta[cluster.stance].label}
+                    </text>
+                  </g>
+                ))}
 
-              {points.map((point) => (
-                <circle
-                  key={point.id}
-                  cx={point.x}
-                  cy={point.y}
-                  r={3.2}
-                  fill={stanceMeta[point.stance].color}
-                  opacity={0.85}
-                  className="cursor-pointer"
-                  onPointerDown={(event) => {
-                    event.stopPropagation();
-                  }}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    handlePointClick(point);
-                  }}
-                >
-                  <title>{point.subtopic}</title>
-                </circle>
-              ))}
+                {subtopicAnchors.map((anchor) => (
+                  <g key={`${anchor.stance}-${anchor.label}`}>
+                    <circle
+                      cx={anchor.x}
+                      cy={anchor.y}
+                      r={14}
+                      fill={stanceMeta[anchor.stance].color}
+                      opacity={0.18}
+                    />
+                    <text
+                      x={anchor.x}
+                      y={anchor.y - 16}
+                      textAnchor="middle"
+                      fontSize="11"
+                      fill="#1f2937"
+                    >
+                      {anchor.label}
+                    </text>
+                  </g>
+                ))}
+              </svg>
 
-              {subtopicAnchors.map((anchor) => (
-                <g key={`${anchor.stance}-${anchor.label}`}>
-                  <circle
-                    cx={anchor.x}
-                    cy={anchor.y}
-                    r={14}
-                    fill={stanceMeta[anchor.stance].color}
-                    opacity={0.18}
+              {points.map((point) => {
+                const href = buildThreadUrl(point);
+                return (
+                  <button
+                    key={point.id}
+                    type="button"
+                    onClick={() => {
+                      window.location.href = href;
+                    }}
+                    className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full focus:outline-none"
+                    style={{
+                      left: point.x,
+                      top: point.y,
+                      background: stanceMeta[point.stance].color,
+                      opacity: 0.9,
+                    }}
+                    aria-label={`${point.topicTitle} ${point.subtopic}`}
                   />
-                  <text
-                    x={anchor.x}
-                    y={anchor.y - 16}
-                    textAnchor="middle"
-                    fontSize="11"
-                    fill="#1f2937"
-                  >
-                    {anchor.label}
-                  </text>
-                </g>
-              ))}
-            </svg>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
 
       <div className="mt-3 flex flex-wrap gap-3 text-xs">
+        {debug && (
+          <span className="rounded-full border border-[color:var(--line)] bg-white px-3 py-1 text-[color:var(--muted)]">
+            {debug}
+          </span>
+        )}
         {Object.entries(stanceMeta).map(([key, meta]) => (
           <span
             key={key}
