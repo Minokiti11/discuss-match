@@ -209,7 +209,6 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
   };
 
   const handlePointClick = (point: OpinionPoint) => {
-    if (movedRef.current) return;
     const params = new URLSearchParams({
       roomId,
       topic: point.topicTitle,
