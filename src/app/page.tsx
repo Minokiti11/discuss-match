@@ -137,6 +137,8 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
   const dragRef = useRef({ x: 0, y: 0 });
   const offsetRef = useRef({ x: 0, y: 0 });
   const movedRef = useRef(false);
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const pinchRef = useRef<{ distance: number; scale: number } | null>(null);
 
   const [points, setPoints] = useState<OpinionPoint[] | null>(null);
 
@@ -181,6 +183,21 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
   };
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    pointersRef.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+
+    if (pointersRef.current.size === 2) {
+      const [first, second] = Array.from(pointersRef.current.values());
+      const distance = Math.hypot(first.x - second.x, first.y - second.y);
+      pinchRef.current = { distance, scale };
+      setIsDragging(false);
+      movedRef.current = false;
+      return;
+    }
+
     setIsDragging(true);
     movedRef.current = false;
     dragRef.current = { x: event.clientX, y: event.clientY };
@@ -188,6 +205,24 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
   };
 
   const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!pointersRef.current.has(event.pointerId)) return;
+    pointersRef.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+
+    if (pointersRef.current.size === 2 && pinchRef.current) {
+      const [first, second] = Array.from(pointersRef.current.values());
+      const distance = Math.hypot(first.x - second.x, first.y - second.y);
+      const ratio = distance / pinchRef.current.distance;
+      const nextScale = Math.min(
+        2.2,
+        Math.max(0.6, pinchRef.current.scale * ratio)
+      );
+      setScale(nextScale);
+      return;
+    }
+
     if (!isDragging) return;
     const dx = event.clientX - dragRef.current.x;
     const dy = event.clientY - dragRef.current.y;
@@ -197,7 +232,24 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
     setOffset({ x: offsetRef.current.x + dx, y: offsetRef.current.y + dy });
   };
 
-  const handlePointerUp = () => {
+  const handlePointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (pointersRef.current.has(event.pointerId)) {
+      pointersRef.current.delete(event.pointerId);
+    }
+    event.currentTarget.releasePointerCapture(event.pointerId);
+
+    if (pointersRef.current.size < 2) {
+      pinchRef.current = null;
+    }
+
+    if (pointersRef.current.size === 1) {
+      const remaining = Array.from(pointersRef.current.values())[0];
+      dragRef.current = { x: remaining.x, y: remaining.y };
+      offsetRef.current = offset;
+      setIsDragging(true);
+      return;
+    }
+
     setIsDragging(false);
   };
 
@@ -223,6 +275,7 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
       onPointerLeave={handlePointerUp}
     >
       {!points ? (
