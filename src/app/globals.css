@@ -33,6 +33,10 @@ body {
   color: var(--foreground);
   font-family: var(--font-space-grotesk), system-ui, sans-serif;
   min-height: 100vh;
+  width: 100%;
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 ::selection {
