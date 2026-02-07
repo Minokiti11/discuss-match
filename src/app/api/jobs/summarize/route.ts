@@ -67,7 +67,7 @@ async function handleSummarize(request: Request) {
       {
         role: "system",
         content:
-          "You summarize soccer match opinions into topic clusters. Return concise Japanese summaries.",
+          "You summarize soccer match opinions into topic clusters. Return concise Japanese summaries. Output raw JSON only, no code fences.",
       },
       {
         role: "user",
@@ -79,13 +79,74 @@ async function handleSummarize(request: Request) {
   });
 
   const summary = response.output_text;
-  let parsed: { matchLabel: string; batchPolicy: string; topics: Array<unknown> };
+
+  const extractJson = (text: string) => {
+    const fenced = text.match(/```json\\s*([\\s\\S]*?)\\s*```/i);
+    if (fenced?.[1]) return fenced[1];
+    const genericFence = text.match(/```\\s*([\\s\\S]*?)\\s*```/i);
+    if (genericFence?.[1]) return genericFence[1];
+    const firstBrace = text.indexOf(\"{\");
+    const lastBrace = text.lastIndexOf(\"}\");
+    if (firstBrace !== -1 && lastBrace !== -1) {
+      return text.slice(firstBrace, lastBrace + 1);
+    }
+    return text;
+  };
+
+  type NormalizedTopic = {
+    id: string;
+    title: string;
+    counts: { support: number; oppose: number; neutral: number };
+    supportSummary: string;
+    opposeSummary: string;
+    neutralSummary: string;
+  };
+
+  const normalizeTopics = (raw: any): NormalizedTopic[] => {
+    const topics = Array.isArray(raw?.topics) ? raw.topics : [];
+    return topics.slice(0, 5).map((topic: any, index: number) => {
+      if (topic?.counts && topic?.title) {
+        return {
+          id: topic.id ?? `topic-${index + 1}`,
+          title: topic.title,
+          counts: {
+            support: Number(topic.counts.support ?? 0),
+            oppose: Number(topic.counts.oppose ?? 0),
+            neutral: Number(topic.counts.neutral ?? 0),
+          },
+          supportSummary: String(topic.supportSummary ?? \"\"),
+          opposeSummary: String(topic.opposeSummary ?? \"\"),
+          neutralSummary: String(topic.neutralSummary ?? \"\"),
+        };
+      }
+
+      const votes = topic?.votes ?? {};
+      const summaryBlock = topic?.summary ?? {};
+      const toLines = (value: any) =>
+        Array.isArray(value) ? value.join(\" \") : String(value ?? \"\");
+
+      return {
+        id: topic?.id ?? `topic-${index + 1}`,
+        title: topic?.topic ?? topic?.title ?? `トピック ${index + 1}`,
+        counts: {
+          support: Number(votes.support ?? 0),
+          oppose: Number(votes.oppose ?? 0),
+          neutral: Number(votes.neutral ?? 0),
+        },
+        supportSummary: toLines(summaryBlock.support),
+        opposeSummary: toLines(summaryBlock.oppose),
+        neutralSummary: toLines(summaryBlock.neutral),
+      };
+    });
+  };
+
+  let parsed: { matchLabel?: string; batchPolicy?: string; topics?: Array<any> };
 
   try {
-    parsed = JSON.parse(summary);
+    parsed = JSON.parse(extractJson(summary));
   } catch {
     return NextResponse.json(
-      { error: "Failed to parse summary JSON", raw: summary },
+      { error: \"Failed to parse summary JSON\", raw: summary },
       { status: 500 }
     );
   }
@@ -93,8 +154,8 @@ async function handleSummarize(request: Request) {
   const payload = {
     matchLabel,
     updatedAt: new Date().toISOString(),
-    batchPolicy: parsed.batchPolicy || "5分ごと / 10件ごと",
-    topics: parsed.topics,
+    batchPolicy: parsed.batchPolicy || \"5分ごと / 10件ごと\",
+    topics: normalizeTopics(parsed),
   };
 
   const { error: insertError } = await supabaseAdmin
