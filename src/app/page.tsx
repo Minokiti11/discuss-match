@@ -40,6 +40,9 @@ type TopicMap = {
   }[];
 };
 
+const MAP_WIDTH = 900;
+const MAP_HEIGHT = 700;
+
 const clusterCenters = [
   { stance: "support" as const, center: { x: 260, y: 220 }, radius: 150 },
   { stance: "oppose" as const, center: { x: 640, y: 240 }, radius: 160 },
@@ -206,7 +209,7 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
   ) => (
     <TransformWrapper
       ref={ref}
-      minScale={0.6}
+      minScale={0.7}
       maxScale={2.2}
       initialScale={initialScale}
       centerOnInit
@@ -216,23 +219,29 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
       doubleClick={{ disabled: true }}
       panning={{ velocityDisabled: true }}
     >
-      <TransformComponent
-        wrapperClass={`relative overflow-hidden rounded-2xl border border-[color:var(--line)] bg-[color:var(--background)] ${heightClass}`}
-        contentClass="relative"
-        wrapperStyle={{ touchAction: "none", width: "100%", height: "100%" }}
+      <div
+        className={`relative w-full overflow-hidden rounded-2xl border border-[color:var(--line)] bg-[color:var(--background)] ${heightClass}`}
       >
-        {!points ? (
-          <div className="absolute inset-0 flex items-center justify-center text-xs text-[color:var(--muted)]">
-            読み込み中…
-          </div>
-        ) : (
-          <div
-            className="relative"
-            style={{ width: 900, height: 700 }}
-            role="img"
-            aria-label="Opinion points map"
-          >
-            <svg viewBox="0 0 900 700" className="h-full w-full">
+        <TransformComponent
+          wrapperClass="h-full w-full"
+          contentClass="relative h-full w-full"
+          wrapperStyle={{ touchAction: "none", width: "100%", height: "100%" }}
+        >
+          {!points ? (
+            <div className="absolute inset-0 flex items-center justify-center text-xs text-[color:var(--muted)]">
+              読み込み中…
+            </div>
+          ) : (
+            <div
+              className="relative h-full w-full"
+              role="img"
+              aria-label="Opinion points map"
+            >
+              <svg
+                viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`}
+                preserveAspectRatio="xMidYMid meet"
+                className="h-full w-full"
+              >
               <defs>
                 <radialGradient id="supportGlow" cx="50%" cy="50%" r="60%">
                   <stop offset="0%" stopColor="#22c55e" stopOpacity="0.25" />
@@ -301,34 +310,38 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
               ))}
             </svg>
 
-            {points.map((point) => {
-              const href = buildThreadUrl(point);
-              return (
-                <button
-                  key={point.id}
-                  type="button"
-                  onClick={() => {
-                    window.location.href = href;
-                  }}
-                  className="absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full transition hover:scale-110 focus:outline-none sm:h-3 sm:w-3"
-                  style={{
-                    left: point.x,
-                    top: point.y,
-                    background: stanceMeta[point.stance].color,
-                    opacity: 0.9,
-                  }}
-                  aria-label={`${point.topicTitle} ${point.subtopic}`}
-                />
-              );
-            })}
-          </div>
-        )}
-        <div className="pointer-events-none absolute left-3 top-3 flex flex-col gap-1 rounded-xl border border-[color:var(--line)] bg-white/80 px-3 py-2 text-[11px] text-[color:var(--muted)] shadow-sm">
+              {points.map((point) => {
+                const href = buildThreadUrl(point);
+                const left = `${(point.x / MAP_WIDTH) * 100}%`;
+                const top = `${(point.y / MAP_HEIGHT) * 100}%`;
+                return (
+                  <button
+                    key={point.id}
+                    type="button"
+                    onClick={() => {
+                      window.location.href = href;
+                    }}
+                    className="absolute h-1 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full transition hover:scale-110 focus:outline-none sm:h-2 sm:w-2"
+                    style={{
+                      left,
+                      top,
+                      background: stanceMeta[point.stance].color,
+                      opacity: 0.9,
+                    }}
+                    aria-label={`${point.topicTitle} ${point.subtopic}`}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </TransformComponent>
+
+        <div className="pointer-events-none absolute left-2 top-2 hidden flex-col gap-1 rounded-xl border border-[color:var(--line)] bg-white/80 px-3 py-2 text-[11px] text-[color:var(--muted)] shadow-sm sm:flex">
           <span>ドラッグ: 移動</span>
           <span>ピンチ / + − : ズーム</span>
           <span>点タップ: スレッドへ</span>
         </div>
-      </TransformComponent>
+      </div>
     </TransformWrapper>
   );
 
@@ -379,7 +392,7 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
       </div>
 
       <div className="mt-4">
-        {renderMap("h-[360px] sm:h-[420px]", normalTransformRef, 0.6)}
+        {renderMap("h-[360px] sm:h-[420px]", normalTransformRef, 1.05)}
       </div>
 
       <div className="mt-3 flex flex-wrap gap-3 text-xs">
@@ -437,7 +450,7 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
             </div>
           </div>
           <div className="flex-1 p-4">
-            {renderMap("h-[calc(100dvh-140px)]", fullTransformRef, 0.7)}
+            {renderMap("h-[calc(100dvh-140px)]", fullTransformRef, 1.2)}
           </div>
         </div>
       )}

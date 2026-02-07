@@ -24,6 +24,15 @@
   box-sizing: border-box;
 }
 
+html,
+body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   background:
     radial-gradient(circle at 10% 10%, rgba(15, 107, 92, 0.12), transparent 45%),
@@ -33,10 +42,6 @@ body {
   color: var(--foreground);
   font-family: var(--font-space-grotesk), system-ui, sans-serif;
   min-height: 100vh;
-  width: 100%;
-  overflow-x: hidden;
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
 }
 
 ::selection {
