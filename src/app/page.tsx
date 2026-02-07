@@ -133,7 +133,6 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
-  const [debug, setDebug] = useState<string | null>(null);
   const dragRef = useRef({ x: 0, y: 0 });
   const offsetRef = useRef({ x: 0, y: 0 });
   const movedRef = useRef(false);
@@ -262,37 +261,6 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
-        onClickCapture={(event) => {
-          const target = event.target as Element | null;
-          setDebug(target ? `click:${target.tagName}` : "click:none");
-        }}
-        onPointerUpCapture={(event) => {
-          const el = document.elementFromPoint(
-            event.clientX,
-            event.clientY
-          );
-          if (!el) return;
-          const circle = el.closest("circle");
-          if (!circle) return;
-          const stance = circle.getAttribute("data-point-stance");
-          const subtopic = circle.getAttribute("data-point-subtopic");
-          const topicId = circle.getAttribute("data-point-topic-id");
-          const topicTitle = circle.getAttribute("data-point-topic-title");
-          const pointId = circle.getAttribute("data-point-id");
-          if (!stance || !subtopic || !topicId || !topicTitle || !pointId) {
-            return;
-          }
-          setDebug(`hit:${pointId}`);
-          window.location.href = buildThreadUrl({
-            id: pointId,
-            stance: stance as Stance,
-            subtopic: subtopic,
-            topicId: topicId,
-            topicTitle: topicTitle,
-            x: event.clientX,
-            y: event.clientY,
-          } as OpinionPoint);
-        }}
       >
         {!points ? (
           <div className="absolute inset-0 flex items-center justify-center text-xs text-[color:var(--muted)]">
@@ -409,11 +377,6 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
       </div>
 
       <div className="mt-3 flex flex-wrap gap-3 text-xs">
-        {debug && (
-          <span className="rounded-full border border-[color:var(--line)] bg-white px-3 py-1 text-[color:var(--muted)]">
-            {debug}
-          </span>
-        )}
         {Object.entries(stanceMeta).map(([key, meta]) => (
           <span
             key={key}
