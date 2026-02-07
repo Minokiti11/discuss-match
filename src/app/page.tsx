@@ -146,6 +146,15 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
     setPoints(buildOpinionPoints(topic));
   }, [topic]);
 
+  useEffect(() => {
+    if (!isExpanded) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isExpanded]);
+
   const subtopicAnchors = useMemo(() => {
     if (!points) return [] as Array<{ label: string; x: number; y: number; stance: Stance }>;
     return topic.clusters.flatMap((cluster) =>
@@ -277,6 +286,7 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
       onPointerLeave={handlePointerUp}
+      style={{ touchAction: "none" }}
     >
       {!points ? (
         <div className="absolute inset-0 flex items-center justify-center text-xs text-[color:var(--muted)]">
@@ -459,7 +469,7 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
       </div>
 
       {isExpanded && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-[color:var(--background)]/95 backdrop-blur">
+        <div className="fixed inset-0 z-50 flex flex-col bg-[color:var(--background)]/95 backdrop-blur overscroll-contain">
           <div className="flex items-center justify-between border-b border-[color:var(--line)] bg-white/90 px-5 py-4">
             <div>
               <p className="text-xs uppercase tracking-[0.25em] text-[color:var(--muted)]">
