@@ -85,8 +85,8 @@ async function handleSummarize(request: Request) {
     if (fenced?.[1]) return fenced[1];
     const genericFence = text.match(/```\\s*([\\s\\S]*?)\\s*```/i);
     if (genericFence?.[1]) return genericFence[1];
-    const firstBrace = text.indexOf(\"{\");
-    const lastBrace = text.lastIndexOf(\"}\");
+    const firstBrace = text.indexOf("{");
+    const lastBrace = text.lastIndexOf("}");
     if (firstBrace !== -1 && lastBrace !== -1) {
       return text.slice(firstBrace, lastBrace + 1);
     }
@@ -146,7 +146,7 @@ async function handleSummarize(request: Request) {
     parsed = JSON.parse(extractJson(summary));
   } catch {
     return NextResponse.json(
-      { error: \"Failed to parse summary JSON\", raw: summary },
+      { error: "Failed to parse summary JSON", raw: summary },
       { status: 500 }
     );
   }
@@ -154,7 +154,7 @@ async function handleSummarize(request: Request) {
   const payload = {
     matchLabel,
     updatedAt: new Date().toISOString(),
-    batchPolicy: parsed.batchPolicy || \"5分ごと / 10件ごと\",
+    batchPolicy: parsed.batchPolicy || "5分ごと / 10件ごと",
     topics: normalizeTopics(parsed),
   };
 
