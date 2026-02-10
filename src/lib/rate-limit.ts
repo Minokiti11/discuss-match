@@ -15,9 +15,14 @@ export async function checkRateLimit(
   userId: string | undefined,
   config: RateLimitConfig
 ): Promise<{ allowed: boolean; remaining: number; resetAt: number }> {
+  // Get IP address from headers (Vercel/Next.js 16 compatible)
+  const ip = request.headers.get("x-forwarded-for") ||
+             request.headers.get("x-real-ip") ||
+             "unknown";
+
   const key = config.keyExtractor
     ? config.keyExtractor(request, userId)
-    : `rate_limit:${userId || "anonymous"}:${request.ip || "unknown"}`;
+    : `rate_limit:${userId || "anonymous"}:${ip}`;
 
   const now = Date.now();
   const record = rateLimitMap.get(key);
