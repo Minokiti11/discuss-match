@@ -9,6 +9,7 @@ import {
   TransformWrapper,
   type ReactZoomPanPinchRef,
 } from "react-zoom-pan-pinch";
+import { HotTopics } from "@/components/HotTopics";
 
 const stanceMeta = {
   support: { label: "賛成", color: "#22c55e" },
@@ -686,6 +687,9 @@ export default function Home() {
           </div>
 
           <div className="flex flex-col gap-6">
+            {/* Hot Topics Section */}
+            <HotTopics roomId={roomId} />
+
             <div className="rounded-3xl border border-[color:var(--line)] bg-white/90 p-6 shadow-[var(--shadow)]">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
