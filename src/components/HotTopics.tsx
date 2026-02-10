@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 
 interface HotTopic {
   id: string;
@@ -8,6 +8,45 @@ interface HotTopic {
   yes_count: number;
   no_count: number;
   velocity_score: number;
+}
+
+// Generate pseudo-random positions for visualization
+function generateVotePositions(
+  yesCount: number,
+  noCount: number,
+  topicId: string
+) {
+  const positions: { x: number; y: number; vote: boolean }[] = [];
+  const seed = topicId.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+
+  const pseudoRandom = (index: number) => {
+    const x = Math.sin(seed + index) * 10000;
+    return x - Math.floor(x);
+  };
+
+  // Generate Yes positions (left side, green)
+  for (let i = 0; i < yesCount; i++) {
+    const angle = pseudoRandom(i * 2) * Math.PI * 2;
+    const radius = Math.sqrt(pseudoRandom(i * 2 + 1)) * 35;
+    positions.push({
+      x: 60 + Math.cos(angle) * radius,
+      y: 60 + Math.sin(angle) * radius,
+      vote: true,
+    });
+  }
+
+  // Generate No positions (right side, red)
+  for (let i = 0; i < noCount; i++) {
+    const angle = pseudoRandom(i * 2 + 100) * Math.PI * 2;
+    const radius = Math.sqrt(pseudoRandom(i * 2 + 101)) * 35;
+    positions.push({
+      x: 180 + Math.cos(angle) * radius,
+      y: 60 + Math.sin(angle) * radius,
+      vote: false,
+    });
+  }
+
+  return positions;
 }
 
 export function HotTopics({ roomId }: { roomId: string }) {
@@ -74,6 +113,10 @@ export function HotTopics({ roomId }: { roomId: string }) {
         {topics.map((topic, idx) => {
           const total = topic.yes_count + topic.no_count;
           const yesPercent = total > 0 ? (topic.yes_count / total) * 100 : 50;
+          const positions = useMemo(
+            () => generateVotePositions(topic.yes_count, topic.no_count, topic.id),
+            [topic.yes_count, topic.no_count, topic.id]
+          );
 
           return (
             <div
@@ -107,6 +150,44 @@ export function HotTopics({ roomId }: { roomId: string }) {
                       style={{ width: `${yesPercent}%` }}
                     />
                   </div>
+
+                  {/* Vote visualization map */}
+                  {total > 0 && (
+                    <div className="mt-4">
+                      <svg
+                        viewBox="0 0 240 120"
+                        className="w-full"
+                        style={{ maxHeight: "120px" }}
+                      >
+                        {/* Background regions */}
+                        <rect x="0" y="0" width="120" height="120" fill="#f0fdf4" />
+                        <rect x="120" y="0" width="120" height="120" fill="#fef2f2" />
+
+                        {/* Labels */}
+                        <text x="60" y="15" textAnchor="middle" fontSize="12" fontWeight="600" fill="#16a34a">
+                          Yes
+                        </text>
+                        <text x="180" y="15" textAnchor="middle" fontSize="12" fontWeight="600" fill="#dc2626">
+                          No
+                        </text>
+
+                        {/* Divider line */}
+                        <line x1="120" y1="0" x2="120" y2="120" stroke="#e5e7eb" strokeWidth="1" />
+
+                        {/* Vote positions */}
+                        {positions.map((pos, i) => (
+                          <circle
+                            key={i}
+                            cx={pos.x}
+                            cy={pos.y}
+                            r="3"
+                            fill={pos.vote ? "#22c55e" : "#ef4444"}
+                            opacity="0.7"
+                          />
+                        ))}
+                      </svg>
+                    </div>
+                  )}
                 </div>
               </div>
 
