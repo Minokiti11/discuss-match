@@ -1,8 +1,16 @@
 {
   "crons": [
     {
+      "path": "/api/jobs/sync-matches",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/jobs/update-scores",
+      "schedule": "*/2 * * * *"
+    },
+    {
       "path": "/api/jobs/summarize",
-      "schedule": "0 7 * * *"
+      "schedule": "*/5 * * * *"
     }
   ]
 }

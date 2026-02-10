@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { cache, CACHE_KEYS } from "@/lib/cache";
 
 export const runtime = "nodejs";
+export const maxDuration = 60; // Allow up to 60 seconds for AI processing
 
 const cronSecret = process.env.CRON_SECRET;
 const openaiApiKey = process.env.OPENAI_API_KEY;
@@ -32,19 +34,20 @@ async function handleSummarize(request: Request) {
   }
 
   const body = (await request.json().catch(() => null)) as
-    | { roomId?: string; matchLabel?: string }
+    | { roomId?: string; matchLabel?: string; limit?: number }
     | null;
 
   const roomId = body?.roomId ?? "default";
   const matchLabel = body?.matchLabel ?? "TBD: 次の注目試合";
+  const limit = body?.limit ?? 500; // Increased from 200 for high-traffic matches
 
   const supabaseAdmin = getSupabaseAdmin();
   const { data: votes, error } = await supabaseAdmin
     .from("votes")
-    .select("stance, comment")
+    .select("stance, comment, created_at")
     .eq("room_id", roomId)
     .order("created_at", { ascending: false })
-    .limit(200);
+    .limit(limit);
 
   if (error) {
     return NextResponse.json(
@@ -61,24 +64,44 @@ async function handleSummarize(request: Request) {
     });
   }
 
-  const response = await openai.responses.create({
-    model: "gpt-4o-mini",
-    input: [
-      {
-        role: "system",
-        content:
-          "You summarize soccer match opinions into topic clusters. Return concise Japanese summaries. Output raw JSON only, no code fences.",
-      },
-      {
-        role: "user",
-        content: `Votes: ${JSON.stringify(
-          votes
-        )}\n\nCreate up to 5 topics. For each topic, group relevant votes and count support/oppose/neutral. Provide 2-3 short sentences for each stance (support/oppose/neutral). Return JSON matching the schema exactly.`,
-      },
-    ],
-  });
+  // Call OpenAI with timeout to prevent blocking
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 45000); // 45s timeout
 
-  const summary = response.output_text;
+  let summary: string;
+  try {
+    const response = await openai.responses.create(
+      {
+        model: "gpt-4o-mini",
+        input: [
+          {
+            role: "system",
+            content:
+              "You summarize soccer match opinions into topic clusters. Return concise Japanese summaries. Output raw JSON only, no code fences.",
+          },
+          {
+            role: "user",
+            content: `Votes: ${JSON.stringify(
+              votes
+            )}\n\nCreate up to 5 topics. For each topic, group relevant votes and count support/oppose/neutral. Provide 2-3 short sentences for each stance (support/oppose/neutral). Return JSON matching the schema exactly.`,
+          },
+        ],
+      },
+      { signal: controller.signal }
+    );
+
+    clearTimeout(timeout);
+    summary = response.output_text;
+  } catch (err: any) {
+    clearTimeout(timeout);
+    if (err.name === "AbortError") {
+      return NextResponse.json(
+        { error: "OpenAI request timeout" },
+        { status: 504 }
+      );
+    }
+    throw err;
+  }
 
   const extractJson = (text: string) => {
     const fenced = text.match(/```json\\s*([\\s\\S]*?)\\s*```/i);
@@ -168,6 +191,9 @@ async function handleSummarize(request: Request) {
       { status: 500 }
     );
   }
+
+  // Invalidate cache so clients get fresh summary
+  cache.delete(CACHE_KEYS.summary(roomId));
 
   return NextResponse.json({ ok: true, roomId, payload });
 }

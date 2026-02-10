@@ -20,33 +20,62 @@ type Stance = keyof typeof stanceMeta;
 
 type OpinionPoint = {
   id: string;
-  stance: Stance;
-  subtopic: string;
+  stance?: Stance;
+  category: string;
   x: number;
   y: number;
   topicId: string;
   topicTitle: string;
+  color: string;
 };
 
 type TopicMap = {
   id: string;
   title: string;
   prompt: string;
-  clusters: {
-    stance: Stance;
+  categories: {
+    label: string;
     center: { x: number; y: number };
     radius: number;
-    subtopics: { label: string; count: number }[];
+    count: number;
+    color: string;
   }[];
 };
 
 const MAP_WIDTH = 900;
 const MAP_HEIGHT = 700;
 
-const clusterCenters = [
-  { stance: "support" as const, center: { x: 260, y: 220 }, radius: 150 },
-  { stance: "oppose" as const, center: { x: 640, y: 240 }, radius: 160 },
-  { stance: "neutral" as const, center: { x: 460, y: 520 }, radius: 140 },
+const categoryPalette = [
+  "#1f6feb",
+  "#f97316",
+  "#22c55e",
+  "#ef4444",
+  "#a855f7",
+  "#14b8a6",
+  "#f59e0b",
+  "#38bdf8",
+];
+
+const categoryCenters = [
+  { x: 200, y: 160 },
+  { x: 450, y: 140 },
+  { x: 700, y: 210 },
+  { x: 650, y: 420 },
+  { x: 420, y: 520 },
+  { x: 200, y: 440 },
+  { x: 320, y: 280 },
+  { x: 560, y: 320 },
+];
+
+const mockMatchCategories = [
+  "前線の連動",
+  "中盤のプレス",
+  "サイドの崩し",
+  "背後のケア",
+  "ビルドアップ",
+  "決定力",
+  "交代采配",
+  "守備ブロック",
 ];
 
 const splitSummary = (text: string) =>
@@ -66,38 +95,22 @@ const buildTopicMapsFromSummary = (summary: RoomSummary): TopicMap[] => {
       "サイド論点の意見点を拡大して確認",
     ];
 
-    const stanceToSummary = {
-      support: splitSummary(topic.supportSummary),
-      oppose: splitSummary(topic.opposeSummary),
-      neutral: splitSummary(topic.neutralSummary),
-    };
+    const labels = mockMatchCategories;
+    const per = 8;
 
-    const stanceToCount = {
-      support: topic.counts.support,
-      oppose: topic.counts.oppose,
-      neutral: topic.counts.neutral,
-    };
-
-    const clusters = clusterCenters.map((base) => {
-      const parts = stanceToSummary[base.stance];
-      const count = stanceToCount[base.stance];
-      const per = parts.length ? Math.max(1, Math.round(count / parts.length)) : count;
-
-      const subtopics = parts.length
-        ? parts.map((label) => ({ label, count: per }))
-        : [{ label: `${stanceMeta[base.stance].label}意見`, count }];
-
-      return {
-        ...base,
-        subtopics,
-      };
-    });
+    const categories = labels.map((label, idx) => ({
+      label,
+      center: categoryCenters[idx % categoryCenters.length],
+      radius: 140,
+      count: per,
+      color: categoryPalette[idx % categoryPalette.length],
+    }));
 
     return {
       id: topic.id || `topic-${index}`,
       title: topic.title,
-      prompt: prompts[index % prompts.length],
-      clusters,
+      prompt: "今日の試合で多かった話題をカテゴリ別に可視化。",
+      categories,
     };
   });
 };
@@ -111,34 +124,35 @@ const buildOpinionPoints = (topic: TopicMap) => {
   const points: OpinionPoint[] = [];
   let seed = 1;
 
-  topic.clusters.forEach((cluster) => {
-    cluster.subtopics.forEach((subtopic) => {
-      for (let i = 0; i < subtopic.count; i += 1) {
+  topic.categories.forEach((category) => {
+    for (let i = 0; i < category.count; i += 1) {
         seed += 1;
         const angle = pseudoRandom(seed) * Math.PI * 2;
         seed += 1;
-        const radius = Math.sqrt(pseudoRandom(seed)) * (cluster.radius - 20);
+        const radius = Math.sqrt(pseudoRandom(seed)) * (category.radius - 20);
         const jitter = (pseudoRandom(seed + 1) - 0.5) * 8;
-        const x = cluster.center.x + Math.cos(angle) * radius + jitter;
-        const y = cluster.center.y + Math.sin(angle) * radius + jitter;
+        const x = category.center.x + Math.cos(angle) * radius + jitter;
+        const y = category.center.y + Math.sin(angle) * radius + jitter;
         points.push({
-          id: `${topic.id}-${cluster.stance}-${subtopic.label}-${i}`,
-          stance: cluster.stance,
-          subtopic: subtopic.label,
+          id: `${topic.id}-${category.label}-${i}`,
+          category: category.label,
           x,
           y,
           topicId: topic.id,
           topicTitle: topic.title,
+          color: category.color,
         });
       }
-    });
   });
 
   return points;
 };
 
-const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
+const MapCard = ({ topic }: { topic: TopicMap }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<string>(
+    topic.categories[0]?.label ?? ""
+  );
   const normalTransformRef = useRef<ReactZoomPanPinchRef | null>(null);
   const fullTransformRef = useRef<ReactZoomPanPinchRef | null>(null);
 
@@ -157,50 +171,45 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
     };
   }, [isExpanded]);
 
-  const subtopicAnchors = useMemo(() => {
-    if (!points) return [] as Array<{ label: string; x: number; y: number; stance: Stance }>;
-    return topic.clusters.flatMap((cluster) =>
-      cluster.subtopics.map((subtopic) => {
-        const relatedPoints = points.filter(
-          (point) =>
-            point.stance === cluster.stance &&
-            point.subtopic === subtopic.label
-        );
-
-        if (relatedPoints.length === 0) {
-          return {
-            label: subtopic.label,
-            x: cluster.center.x,
-            y: cluster.center.y,
-            stance: cluster.stance,
-          };
-        }
-
-        const avgX =
-          relatedPoints.reduce((acc, point) => acc + point.x, 0) /
-          relatedPoints.length;
-        const avgY =
-          relatedPoints.reduce((acc, point) => acc + point.y, 0) /
-          relatedPoints.length;
-
-        return { label: subtopic.label, x: avgX, y: avgY, stance: cluster.stance };
-      })
-    );
+  const categoryAnchors = useMemo(() => {
+    if (!points) return [] as Array<{ label: string; x: number; y: number; color: string }>;
+    return topic.categories.map((category) => {
+      const relatedPoints = points.filter((point) => point.category === category.label);
+      if (!relatedPoints.length) {
+        return {
+          label: category.label,
+          x: category.center.x,
+          y: category.center.y,
+          color: category.color,
+        };
+      }
+      const avgX =
+        relatedPoints.reduce((acc, point) => acc + point.x, 0) /
+        relatedPoints.length;
+      const avgY =
+        relatedPoints.reduce((acc, point) => acc + point.y, 0) /
+        relatedPoints.length;
+      return { label: category.label, x: avgX, y: avgY, color: category.color };
+    });
   }, [points, topic]);
 
   const resetView = () => {
     normalTransformRef.current?.resetTransform();
   };
 
-  const buildThreadUrl = (point: OpinionPoint) => {
-    const params = new URLSearchParams({
-      roomId,
-      topic: point.topicTitle,
-      stance: point.stance,
-      subtopic: point.subtopic,
-    });
-    return `/topics/${point.topicId}?${params.toString()}`;
-  };
+  const mockOpinions = useMemo(() => {
+    const base = [
+      "連動が良くなってチャンスが増えた",
+      "もう少し距離感を詰めたい",
+      "相手のプレスに対して判断が遅い",
+      "リズムが出た時間帯がはっきりしていた",
+      "改善できれば得点に直結しそう",
+    ];
+    return topic.categories.reduce<Record<string, string[]>>((acc, cat) => {
+      acc[cat.label] = base.map((text) => `${cat.label}: ${text}`);
+      return acc;
+    }, {});
+  }, [topic.categories]);
 
   const renderMap = (
     heightClass: string,
@@ -257,49 +266,33 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
                 </radialGradient>
               </defs>
 
-              {topic.clusters.map((cluster) => (
-                <g key={cluster.stance}>
+              {topic.categories.map((category) => (
+                <g key={category.label}>
                   <circle
-                    cx={cluster.center.x}
-                    cy={cluster.center.y}
-                    r={cluster.radius}
-                    fill={`url(#${cluster.stance}Glow)`}
+                    cx={category.center.x}
+                    cy={category.center.y}
+                    r={category.radius}
+                    fill={category.color}
+                    opacity={0.08}
                   />
-                  <circle
-                    cx={cluster.center.x}
-                    cy={cluster.center.y}
-                    r={cluster.radius - 24}
-                    fill="none"
-                    stroke={stanceMeta[cluster.stance].color}
-                    strokeOpacity="0.3"
-                    strokeWidth="2"
-                    strokeDasharray="6 8"
-                  />
-                  <text
-                    x={cluster.center.x}
-                    y={cluster.center.y}
-                    textAnchor="middle"
-                    fontSize="16"
-                    fill={stanceMeta[cluster.stance].color}
-                    fontWeight="600"
-                  >
-                    {stanceMeta[cluster.stance].label}
-                  </text>
                 </g>
               ))}
 
-              {subtopicAnchors.map((anchor) => (
-                <g key={`${anchor.stance}-${anchor.label}`}>
-                  <circle
-                    cx={anchor.x}
-                    cy={anchor.y}
-                    r={14}
-                    fill={stanceMeta[anchor.stance].color}
-                    opacity={0.18}
+              {categoryAnchors.map((anchor) => (
+                <g key={anchor.label}>
+                  <rect
+                    x={anchor.x - 44}
+                    y={anchor.y - 18}
+                    rx={10}
+                    ry={10}
+                    width={88}
+                    height={24}
+                    fill="#ffffff"
+                    opacity={0.95}
                   />
                   <text
                     x={anchor.x}
-                    y={anchor.y - 16}
+                    y={anchor.y - 2}
                     textAnchor="middle"
                     fontSize="11"
                     fill="#1f2937"
@@ -310,8 +303,7 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
               ))}
             </svg>
 
-              {points.map((point) => {
-                const href = buildThreadUrl(point);
+            {points.map((point) => {
                 const left = `${(point.x / MAP_WIDTH) * 100}%`;
                 const top = `${(point.y / MAP_HEIGHT) * 100}%`;
                 return (
@@ -319,19 +311,19 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
                     key={point.id}
                     type="button"
                     onClick={() => {
-                      window.location.href = href;
+                      setSelectedCategory(point.category);
                     }}
                     className="absolute h-1 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full transition hover:scale-110 focus:outline-none sm:h-2 sm:w-2"
-                    style={{
-                      left,
-                      top,
-                      background: stanceMeta[point.stance].color,
-                      opacity: 0.9,
-                    }}
-                    aria-label={`${point.topicTitle} ${point.subtopic}`}
-                  />
-                );
-              })}
+                  style={{
+                    left,
+                    top,
+                    background: point.color,
+                    opacity: 0.9,
+                  }}
+                  aria-label={`${point.topicTitle} ${point.category}`}
+                />
+              );
+            })}
             </div>
           )}
         </TransformComponent>
@@ -339,72 +331,94 @@ const MapCard = ({ topic, roomId }: { topic: TopicMap; roomId: string }) => {
         <div className="pointer-events-none absolute left-2 top-2 hidden flex-col gap-1 rounded-xl border border-[color:var(--line)] bg-white/80 px-3 py-2 text-[11px] text-[color:var(--muted)] shadow-sm sm:flex">
           <span>ドラッグ: 移動</span>
           <span>ピンチ / + − : ズーム</span>
-          <span>点タップ: スレッドへ</span>
+          <span>点タップ: 右に表示</span>
         </div>
       </div>
     </TransformWrapper>
   );
 
   return (
-    <article className="w-full rounded-3xl border border-[color:var(--line)] bg-white/80 p-5 shadow-[var(--shadow)]">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-xs uppercase tracking-[0.25em] text-[color:var(--muted)]">
-            Topic Map
+    <article className="w-full rounded-[28px] bg-[#1f2657] p-5 shadow-[0_30px_70px_rgba(17,24,39,0.35)]">
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(220px,300px)]">
+        <div className="rounded-[22px] bg-[#eaf3fb] p-4 shadow-[inset_0_0_0_1px_rgba(15,23,42,0.08)]">
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-3 text-[11px] font-semibold uppercase tracking-[0.25em] text-[#5a6c86]">
+            <span>Topic Map</span>
+            <div className="flex items-center gap-2 text-[11px] normal-case tracking-normal">
+              <button
+                className="rounded-full border border-white/70 bg-white px-3 py-1 font-semibold text-[#1f2657]"
+                type="button"
+                onClick={() => setIsExpanded(true)}
+              >
+                全画面
+              </button>
+              <button
+                className="rounded-full border border-white/70 bg-white px-3 py-1 font-semibold text-[#1f2657]"
+                type="button"
+                onClick={() => normalTransformRef.current?.zoomIn(0.15)}
+              >
+                +
+              </button>
+              <button
+                className="rounded-full border border-white/70 bg-white px-3 py-1 font-semibold text-[#1f2657]"
+                type="button"
+                onClick={() => normalTransformRef.current?.zoomOut(0.15)}
+              >
+                −
+              </button>
+              <button
+                className="rounded-full border border-white/70 bg-white px-3 py-1 font-semibold text-[#1f2657]"
+                type="button"
+                onClick={resetView}
+              >
+                Reset
+              </button>
+            </div>
+          </div>
+          {renderMap("h-[320px] sm:h-[380px] lg:h-[420px]", normalTransformRef, 1.05)}
+        </div>
+
+        <div className="rounded-[22px] bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.15)]">
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#64748b]">
+            Insight Card
           </p>
-          <h3 className="mt-2 text-xl font-semibold text-[color:var(--panel-ink)]">
+          <h3 className="mt-3 text-2xl font-semibold text-[#111827]">
             {topic.title}
           </h3>
-          <p className="mt-1 text-xs text-[color:var(--muted)]">
-            {topic.prompt}
+          <p className="mt-2 text-sm text-[#6b7280]">{topic.prompt}</p>
+          <div className="mt-4 flex flex-wrap gap-2 text-[11px] text-[#64748b]">
+            {topic.categories.slice(0, 6).map((item) => (
+              <span
+                key={item.label}
+                className="flex items-center gap-2 rounded-full border border-[#e2e8f0] bg-[#f8fafc] px-3 py-1"
+              >
+                <span
+                  className="h-2 w-2 rounded-full"
+                  style={{ background: item.color }}
+                />
+                <span>{item.label}</span>
+              </span>
+            ))}
+          </div>
+          <div className="mt-4 rounded-2xl border border-[#e2e8f0] bg-[#f8fafc] p-4 text-sm text-[#1f2937]">
+            <p className="text-xs uppercase tracking-[0.2em] text-[#64748b]">
+              選択中の論点
+            </p>
+            <h4 className="mt-2 text-lg font-semibold text-[#111827]">
+              {selectedCategory || "カテゴリを選択"}
+            </h4>
+            <div className="mt-3 flex flex-col gap-2 text-sm text-[#475569]">
+              {(mockOpinions[selectedCategory] ?? []).map((line, idx) => (
+                <p key={`${selectedCategory}-${idx}`}>{line}</p>
+              ))}
+              {!mockOpinions[selectedCategory]?.length && (
+                <p>点をタップすると同じクラスタの意見が表示されます。</p>
+              )}
+            </div>
+          </div>
+          <p className="mt-4 text-xs text-[#94a3b8]">
+            点をタップすると右側に同クラスタの意見が表示されます。
           </p>
         </div>
-        <div className="flex items-center gap-2 text-xs">
-          <button
-            className="rounded-full border border-[color:var(--line)] bg-white px-3 py-1 font-semibold text-[color:var(--panel-ink)]"
-            type="button"
-            onClick={() => setIsExpanded(true)}
-          >
-            全画面
-          </button>
-          <button
-            className="rounded-full border border-[color:var(--line)] bg-white px-3 py-1 font-semibold text-[color:var(--panel-ink)]"
-            type="button"
-            onClick={() => normalTransformRef.current?.zoomIn(0.15)}
-          >
-            +
-          </button>
-          <button
-            className="rounded-full border border-[color:var(--line)] bg-white px-3 py-1 font-semibold text-[color:var(--panel-ink)]"
-            type="button"
-            onClick={() => normalTransformRef.current?.zoomOut(0.15)}
-          >
-            −
-          </button>
-          <button
-            className="rounded-full border border-[color:var(--line)] bg-white px-3 py-1 font-semibold text-[color:var(--panel-ink)]"
-            type="button"
-            onClick={resetView}
-          >
-            Reset
-          </button>
-        </div>
-      </div>
-
-      <div className="mt-4">
-        {renderMap("h-[360px] sm:h-[420px]", normalTransformRef, 1.05)}
-      </div>
-
-      <div className="mt-3 flex flex-wrap gap-3 text-xs">
-        {Object.entries(stanceMeta).map(([key, meta]) => (
-          <span
-            key={key}
-            className="flex items-center gap-2 rounded-full border border-[color:var(--line)] bg-white px-3 py-1"
-          >
-            <span className="h-2 w-2 rounded-full" style={{ background: meta.color }} />
-            <span className="text-[color:var(--panel-ink)]">{meta.label}</span>
-          </span>
-        ))}
       </div>
 
       {isExpanded && (
@@ -693,7 +707,7 @@ export default function Home() {
 
               <div className="mt-4 flex flex-col gap-5">
                 {mapsToRender.map((topic) => (
-                  <MapCard key={topic.id} topic={topic} roomId={roomId} />
+                  <MapCard key={topic.id} topic={topic} />
                 ))}
               </div>
             </div>
