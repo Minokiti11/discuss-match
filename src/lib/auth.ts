@@ -34,9 +34,5 @@ export const getAuthOptions = (): NextAuthOptions => {
         return session;
       },
     },
-    // Vercel本番環境用の設定
-    useSecureCookies: process.env.NODE_ENV === "production",
-    // 本番環境のURLを信頼
-    trustHost: true,
   };
 };
