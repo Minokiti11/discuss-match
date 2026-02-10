@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 
 interface HotTopic {
   id: string;
@@ -113,10 +113,7 @@ export function HotTopics({ roomId }: { roomId: string }) {
         {topics.map((topic, idx) => {
           const total = topic.yes_count + topic.no_count;
           const yesPercent = total > 0 ? (topic.yes_count / total) * 100 : 50;
-          const positions = useMemo(
-            () => generateVotePositions(topic.yes_count, topic.no_count, topic.id),
-            [topic.yes_count, topic.no_count, topic.id]
-          );
+          const positions = generateVotePositions(topic.yes_count, topic.no_count, topic.id);
 
           return (
             <div
